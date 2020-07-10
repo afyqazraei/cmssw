@@ -20,7 +20,10 @@ import os
 import sys
 import glob
 import shutil
-import cPickle
+if sys.version_info[0]>2:
+  import _pickle as cPickle
+else:
+  import cPickle
 import subprocess
 import re
 import argparse
@@ -261,6 +264,15 @@ if not args.fireMerge:
         resources = '-q'+resources+' -m g_cmscaf'
     elif "htcondor" in resources:
         fire_htcondor = True
+        schedinfo = subprocess.check_output(["myschedd","show"])
+        if 'cafalca' in resources:
+            if not 'tzero' in schedinfo:
+                print("\nMPS fire: request to use CAF pool which has not been set up. Call `module load lxbatch/tzero` and try again")
+                exit(1)
+        else:
+            if not 'share' in schedinfo:
+                print("\nMPS fire: request to use standard pool when CAF pool is set up. Call `module load lxbatch/share` and try again")
+                exit(1)
     else:
         resources = '-q '+resources
 
@@ -319,6 +331,11 @@ else:
         resources = '-q cmscafalcamille'
     elif "htcondor" in resources:
         fire_htcondor = True
+        schedinfo = subprocess.check_output(["myschedd","show"])
+        if 'bigmem' in resources:
+            if not 'share' in schedinfo:
+                print("\nMPS fire: CAF pool is set up, but request to use high-memory machines which live in the standard pool. Call `module load lxbatch/share` and try again")
+                exit(1)
     else:
         resources = '-q '+resources
 

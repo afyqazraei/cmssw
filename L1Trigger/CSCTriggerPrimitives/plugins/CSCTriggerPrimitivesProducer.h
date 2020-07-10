@@ -34,12 +34,16 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Utilities/interface/InputTag.h"
-
+#include "FWCore/Utilities/interface/ESGetToken.h"
 #include "DataFormats/CSCDigi/interface/CSCComparatorDigiCollection.h"
 #include "DataFormats/CSCDigi/interface/CSCWireDigiCollection.h"
 #include "DataFormats/GEMDigi/interface/GEMPadDigiCollection.h"
 #include "DataFormats/GEMDigi/interface/GEMPadDigiClusterCollection.h"
 #include "L1Trigger/CSCTriggerPrimitives/interface/CSCTriggerPrimitivesBuilder.h"
+#include "Geometry/Records/interface/MuonGeometryRecord.h"
+#include "CondFormats/DataRecord/interface/CSCBadChambersRcd.h"
+#include "Geometry/GEMGeometry/interface/GEMGeometry.h"
+#include "CondFormats/DataRecord/interface/CSCDBL1TPParametersRcd.h"
 
 class CSCTriggerPrimitivesProducer : public edm::global::EDProducer<edm::StreamCache<CSCTriggerPrimitivesBuilder>> {
 public:
@@ -67,12 +71,24 @@ private:
   edm::EDGetTokenT<CSCWireDigiCollection> wire_token_;
   edm::EDGetTokenT<GEMPadDigiCollection> gem_pad_token_;
   edm::EDGetTokenT<GEMPadDigiClusterCollection> gem_pad_cluster_token_;
-
+  edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscToken_;
+  edm::ESGetToken<GEMGeometry, MuonGeometryRecord> gemToken_;
+  edm::ESGetToken<CSCBadChambers, CSCBadChambersRcd> pBadChambersToken_;
+  edm::ESGetToken<CSCDBL1TPParameters, CSCDBL1TPParametersRcd> confToken_;
   // switch to force the use of parameters from config file rather then from DB
   bool debugParameters_;
 
   // switch to for enabling checking against the list of bad chambers
   bool checkBadChambers_;
+
+  // write out all CLCTs
+  bool writeOutAllCLCTs_;
+
+  // write out all ALCTs
+  bool writeOutAllALCTs_;
+
+  // Write out pre-triggers
+  bool savePreTriggers_;
 
   // switch to enable the integrated local triggers in ME11 and ME21
   bool runME11ILT_;

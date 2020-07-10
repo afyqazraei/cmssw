@@ -12,7 +12,7 @@
 
 // system include files
 #include <sstream>
-#include <boost/bind.hpp>
+#include <functional>
 #include <boost/program_options.hpp>
 #include <cstring>
 
@@ -28,6 +28,7 @@
 #include "TEveManager.h"
 #include "TFile.h"
 #include "TGClient.h"
+#include "TVirtualX.h"
 #include <KeySymbols.h>
 
 #include "Fireworks/Core/src/CmsShowMain.h"
@@ -133,7 +134,8 @@ CmsShowMain::CmsShowMain(int argc, char* argv[])
       m_liveTimer(new SignalTimer()),
       m_liveTimeout(600000),
       m_lastXEventSerial(0),
-      m_noVersionCheck(false) {
+      m_noVersionCheck(false),
+      m_globalTagCheck(true) {
   try {
     TGLWidget* w = TGLWidget::Create(gClient->GetDefaultRoot(), kTRUE, kTRUE, nullptr, 10, 10);
     delete w;
@@ -295,11 +297,9 @@ CmsShowMain::CmsShowMain(int argc, char* argv[])
 
   // geometry
   if (vm.count(kGeomFileOpt)) {
+    m_globalTagCheck = false;
     setGeometryFilename(vm[kGeomFileOpt].as<std::string>());
     fwLog(fwlog::kInfo) << "Geometry file " << geometryFilename() << "\n";
-  } else {
-    //  fwLog(fwlog::kInfo) << "No geom file name.  Choosing default.\n";
-    setGeometryFilename("cmsGeom10.root");
   }
 
   if (vm.count(kSimGeomFileOpt)) {
@@ -352,17 +352,18 @@ CmsShowMain::CmsShowMain(int argc, char* argv[])
   CmsShowTaskExecutor::TaskFunctor f;
   // first check if port is not occupied
   if (vm.count(kPortCommandOpt)) {
-    f = boost::bind(&CmsShowMain::setupSocket, this, vm[kPortCommandOpt].as<unsigned int>());
+    f = std::bind(&CmsShowMain::setupSocket, this, vm[kPortCommandOpt].as<unsigned int>());
     startupTasks()->addTask(f);
   }
-
-  f = boost::bind(&CmsShowMainBase::loadGeometry, this);
-  startupTasks()->addTask(f);
-  f = boost::bind(&CmsShowMainBase::setupViewManagers, this);
+  if (!geometryFilename().empty()) {
+    f = std::bind(&CmsShowMainBase::loadGeometry, this);
+    startupTasks()->addTask(f);
+  }
+  f = std::bind(&CmsShowMainBase::setupViewManagers, this);
   startupTasks()->addTask(f);
 
   if (vm.count(kLiveCommandOpt)) {
-    f = boost::bind(&CmsShowMain::setLiveMode, this);
+    f = std::bind(&CmsShowMain::setLiveMode, this);
     startupTasks()->addTask(f);
   }
 
@@ -371,23 +372,23 @@ CmsShowMain::CmsShowMain(int argc, char* argv[])
     m_context->getField()->setUserField(vm[kFieldCommandOpt].as<double>());
   }
 
-  f = boost::bind(&CmsShowMain::setupDataHandling, this);
+  f = std::bind(&CmsShowMain::setupDataHandling, this);
   startupTasks()->addTask(f);
 
   if (vm.count(kLoopOpt))
     setPlayLoop();
 
   if (eveMode) {
-    f = boost::bind(&CmsShowMainBase::setupDebugSupport, this);
+    f = std::bind(&CmsShowMainBase::setupDebugSupport, this);
     startupTasks()->addTask(f);
   }
   if (vm.count(kChainCommandOpt)) {
-    f = boost::bind(
+    f = std::bind(
         &CmsShowNavigator::setMaxNumberOfFilesToChain, m_navigator.get(), vm[kChainCommandOpt].as<unsigned int>());
     startupTasks()->addTask(f);
   }
   if (vm.count(kPlayOpt)) {
-    f = boost::bind(&CmsShowMainBase::setupAutoLoad, this, vm[kPlayOpt].as<float>());
+    f = std::bind(&CmsShowMainBase::setupAutoLoad, this, vm[kPlayOpt].as<float>());
     startupTasks()->addTask(f);
   }
 
@@ -419,7 +420,7 @@ CmsShowMain::CmsShowMain(int argc, char* argv[])
   }
 
   if (vm.count(kPortCommandOpt)) {
-    f = boost::bind(&CmsShowMain::connectSocket, this);
+    f = std::bind(&CmsShowMain::connectSocket, this);
     startupTasks()->addTask(f);
   }
 
@@ -493,6 +494,10 @@ void CmsShowMain::fileChangedSlot(const TFile* file) {
 
   if (context()->getField()->getSource() == FWMagField::kNone) {
     context()->getField()->resetFieldEstimate();
+  }
+  if (geometryFilename().empty()) {
+    std::string gt = m_navigator->getCurrentGlobalTag();
+    fireworks::Context::getInstance()->getGeom()->applyGlobalTag(gt);
   }
   m_metadataManager->update(new FWLiteJobMetadataUpdateRequest(getCurrentEvent(), m_openFile));
 }
@@ -639,14 +644,17 @@ void CmsShowMain::setupDataHandling() {
   guiManager()->updateStatus("Setting up data handling...");
 
   // navigator filtering  ->
-  m_navigator->fileChanged_.connect(boost::bind(&CmsShowMain::fileChangedSlot, this, _1));
-  m_navigator->editFiltersExternally_.connect(boost::bind(&FWGUIManager::updateEventFilterEnable, guiManager(), _1));
-  m_navigator->filterStateChanged_.connect(boost::bind(&CmsShowMain::navigatorChangedFilterState, this, _1));
-  m_navigator->postFiltering_.connect(boost::bind(&CmsShowMain::postFiltering, this, _1));
+  m_navigator->fileChanged_.connect(std::bind(&CmsShowMain::fileChangedSlot, this, std::placeholders::_1));
+  m_navigator->editFiltersExternally_.connect(
+      std::bind(&FWGUIManager::updateEventFilterEnable, guiManager(), std::placeholders::_1));
+  m_navigator->filterStateChanged_.connect(
+      std::bind(&CmsShowMain::navigatorChangedFilterState, this, std::placeholders::_1));
+  m_navigator->postFiltering_.connect(std::bind(&CmsShowMain::postFiltering, this, std::placeholders::_1));
 
   // navigator fitlering <-
-  guiManager()->showEventFilterGUI_.connect(boost::bind(&CmsShowNavigator::showEventFilterGUI, m_navigator.get(), _1));
-  guiManager()->filterButtonClicked_.connect(boost::bind(&CmsShowMain::filterButtonClicked, this));
+  guiManager()->showEventFilterGUI_.connect(
+      std::bind(&CmsShowNavigator::showEventFilterGUI, m_navigator.get(), std::placeholders::_1));
+  guiManager()->filterButtonClicked_.connect(std::bind(&CmsShowMain::filterButtonClicked, this));
 
   // Data handling. File related and therefore not in the base class.
   if (guiManager()->getAction(cmsshow::sOpenData) != nullptr)
@@ -828,7 +836,7 @@ void CmsShowMain::postFiltering(bool doDraw) {
 void CmsShowMain::setLiveMode() {
   m_live = true;
   m_liveTimer.reset(new SignalTimer());
-  m_liveTimer->timeout_.connect(boost::bind(&CmsShowMain::checkLiveMode, this));
+  m_liveTimer->timeout_.connect(std::bind(&CmsShowMain::checkLiveMode, this));
 
   Window_t rootw, childw;
   Int_t root_x, root_y, win_x, win_y;

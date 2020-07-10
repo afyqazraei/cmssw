@@ -5,10 +5,8 @@ from RecoJets.JetProducers.AnomalousCellParameters_cfi import *
 from RecoHI.HiJetAlgos.HiPFJetParameters_cff import *
 
 #pseudo towers for noise suppression background subtraction
-PFTowers = cms.EDProducer("ParticleTowerProducer",
-                          src = cms.InputTag("particleFlow"),
-                          useHF = cms.bool(False)
-                          )
+import RecoHI.HiJetAlgos.particleTowerProducer_cfi as _mod
+PFTowers = _mod.particleTowerProducer.clone(useHF = False)
 
 #dummy sequence to speed-up reconstruction in pp_on_AA era
 pfNoPileUpJMEHI = cms.EDFilter('GenericPFCandidateSelector',
@@ -82,10 +80,10 @@ akCs4PFJets.GhostArea     = cms.double(0.005)
 
 akCs3PFJets = akCs4PFJets.clone(rParam       = cms.double(0.3))
 
-hiRecoPFJets = cms.Sequence(
+hiRecoPFJetsTask = cms.Task(
     PFTowers
-    *akPu3PFJets*akPu4PFJets*akPu5PFJets
-    *kt4PFJetsForRho*hiFJRhoProducer
-    *akCs3PFJets*akCs4PFJets
+    ,akPu3PFJets,akPu4PFJets,akPu5PFJets
+    ,kt4PFJetsForRho,hiFJRhoProducer
+    ,akCs3PFJets,akCs4PFJets
     )
-
+hiRecoPFJets = cms.Sequence(hiRecoPFJetsTask)

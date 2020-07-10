@@ -43,7 +43,6 @@ namespace edm {
   class HistoryAppender;
   class MergeableRunProductMetadata;
   class ModuleCallingContext;
-  class ProcessHistoryRegistry;
   class ProductResolverIndexHelper;
   class EDConsumerBase;
   class SharedResourcesAcquirer;
@@ -81,7 +80,9 @@ namespace edm {
 
     void adjustIndexesAfterProductRegistryAddition();
 
-    void fillPrincipal(ProcessHistoryID const& hist, ProcessHistoryRegistry const& phr, DelayedReader* reader);
+    void fillPrincipal(DelayedReader* reader);
+    void fillPrincipal(ProcessHistoryID const& hist, ProcessHistory const* phr, DelayedReader* reader);
+    void fillPrincipal(std::string const& processNameOfBlock, DelayedReader* reader);
 
     void clearPrincipal();
 
@@ -218,6 +219,9 @@ namespace edm {
     }
 
   private:
+    //called by adjustIndexesAfterProductRegistryAddition only if an index actually changed
+    virtual void changedIndexes_() {}
+
     void addScheduledProduct(std::shared_ptr<BranchDescription const> bd);
     void addSourceProduct(std::shared_ptr<BranchDescription const> bd);
     void addInputProduct(std::shared_ptr<BranchDescription const> bd);

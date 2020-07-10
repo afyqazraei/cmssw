@@ -6,8 +6,8 @@
 import FWCore.ParameterSet.Config as cms
 
 
-from Configuration.Eras.Era_Phase2C8_timing_layer_bar_cff import Phase2C8_timing_layer_bar
-process = cms.Process('Phase2PixelNtuple',Phase2C8_timing_layer_bar)
+from Configuration.Eras.Era_Phase2C8_cff import Phase2C8
+process = cms.Process('Phase2PixelNtuple',Phase2C8)
 
 # import of standard configurations
 process.load('Configuration.StandardSequences.Services_cff')
@@ -132,10 +132,6 @@ from HLTrigger.Configuration.customizeHLTforMC import customizeHLTforMC
 process = customizeHLTforMC(process)
 
 # End of customisation functions
-#do not add changes to your config after this point (unless you know what you are doing)
-from FWCore.ParameterSet.Utilities import convertToUnscheduled
-process=convertToUnscheduled(process)
-
 
 # Customisation from command line
 

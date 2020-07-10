@@ -1,15 +1,15 @@
 #ifndef EventFilter_Utilities_FedRawDataInputSource_h
 #define EventFilter_Utilities_FedRawDataInputSource_h
 
-#include <memory>
-#include <cstdio>
-#include <mutex>
 #include <condition_variable>
+#include <cstdio>
+#include <filesystem>
+#include <memory>
+#include <mutex>
 #include <thread>
+
 #include "tbb/concurrent_queue.h"
 #include "tbb/concurrent_vector.h"
-
-#include "boost/filesystem.hpp"
 
 #include "DataFormats/Provenance/interface/ProcessHistoryID.h"
 #include "DataFormats/Provenance/interface/Timestamp.h"
@@ -45,7 +45,7 @@ public:
   std::pair<bool, unsigned int> getEventReport(unsigned int lumi, bool erase);
 
 protected:
-  bool checkNextEvent() override;
+  Next checkNext() override;
   void read(edm::EventPrincipal& eventPrincipal) override;
 
 private:
@@ -90,7 +90,6 @@ private:
   // get LS from filename instead of event header
   const bool getLSFromFilename_;
   const bool alwaysStartFromFirstLS_;
-  const bool verifyAdler32_;
   const bool verifyChecksum_;
   const bool useL1EventID_;
   std::vector<std::string> fileNames_;

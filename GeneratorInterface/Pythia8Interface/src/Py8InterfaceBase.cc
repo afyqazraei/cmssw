@@ -28,7 +28,7 @@ namespace gen {
 
     if (ps.exists("useEvtGenPlugin")) {
       useEvtGen = true;
-      string evtgenpath(getenv("EVTGENDATA"));
+      string evtgenpath(std::getenv("EVTGENDATA"));
       evtgenDecFile = evtgenpath + string("/DECAY_2010.DEC");
       evtgenPdlFile = evtgenpath + string("/evt.pdl");
 
@@ -79,6 +79,10 @@ namespace gen {
     if (!fMasterGen.get())
       fMasterGen.reset(new Pythia);
     fDecayer.reset(new Pythia);
+
+    //add settings for resonance decay filter
+    fMasterGen->settings.addFlag("BiasedTauDecayer:filter", false);
+    fMasterGen->settings.addFlag("BiasedTauDecayer:eMuDecays", true);
 
     //add settings for resonance decay filter
     fMasterGen->settings.addFlag("ResonanceDecayFilter:filter", false);

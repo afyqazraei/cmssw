@@ -1075,7 +1075,7 @@ void HistoFiller<T>::fillHistos(edm::Handle<trigger::TriggerEventWithRefs> &trig
     dqm->totalmatchs.at(vPos)->Fill(n + 0.5);
 }
 
-void EmDQM::endRun(edm::Run const &iRun, edm::EventSetup const &iSetup) {
+void EmDQM::dqmEndRun(edm::Run const &iRun, edm::EventSetup const &iSetup) {
   // loop over all the trigger path parameter sets
   unsigned int vPos = 0;
   for (std::vector<edm::ParameterSet>::iterator psetIt = paramSets.begin(); psetIt != paramSets.end();
@@ -1088,7 +1088,7 @@ void EmDQM::endRun(edm::Run const &iRun, edm::EventSetup const &iSetup) {
     // check which ones were never found
     std::vector<std::string> labelsNeverFound;
 
-    for (edm::InputTag const &tag : hltCollectionLabelsMissedPerPath.at(vPos)) {
+    for (edm::InputTag const tag : hltCollectionLabelsMissedPerPath.at(vPos)) {
       if ((hltCollectionLabelsFoundPerPath.at(vPos)).count(tag.encode()) == 0)
         // never found
         labelsNeverFound.push_back(tag.encode());

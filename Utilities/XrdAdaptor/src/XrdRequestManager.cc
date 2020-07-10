@@ -66,7 +66,7 @@ long long timeDiffMS(const timespec &a, const timespec &b) {
  * We do not care about the response of sending the monitoring information;
  * this handler class simply frees any returned buffer to prevent memory leaks.
  */
-class SendMonitoringInfoHandler : boost::noncopyable, public XrdCl::ResponseHandler {
+class SendMonitoringInfoHandler : public XrdCl::ResponseHandler {
   void HandleResponse(XrdCl::XRootDStatus *status, XrdCl::AnyObject *response) override {
     if (response) {
       XrdCl::Buffer *buffer = nullptr;
@@ -78,6 +78,11 @@ class SendMonitoringInfoHandler : boost::noncopyable, public XrdCl::ResponseHand
     delete response;
     delete status;
   }
+
+public:
+  SendMonitoringInfoHandler(const SendMonitoringInfoHandler &) = delete;
+  SendMonitoringInfoHandler &operator=(const SendMonitoringInfoHandler &) = delete;
+  SendMonitoringInfoHandler() = default;
 };
 
 CMS_THREAD_SAFE SendMonitoringInfoHandler nullHandler;
@@ -676,26 +681,26 @@ std::future<IOSize> XrdAdaptor::RequestManager::handle(std::shared_ptr<std::vect
     future2 = c_ptr2->get_future();
   }
   if (!req1->empty() && !req2->empty()) {
-    std::future<IOSize> task =
-        std::async(std::launch::deferred,
-                   [](std::future<IOSize> a, std::future<IOSize> b) {
-                     // Wait until *both* results are available.  This is essential
-                     // as the callback may try referencing the RequestManager.  If one
-                     // throws an exception (causing the RequestManager to be destroyed by
-                     // XrdFile) and the other has a failure, then the recovery code will
-                     // reference the destroyed RequestManager.
-                     //
-                     // Unlike other places where we use shared/weak ptrs to maintain object
-                     // lifetime and destruction asynchronously, we *cannot* destroy the request
-                     // asynchronously as it is associated with a ROOT buffer.  We must wait until we
-                     // are guaranteed that XrdCl will not write into the ROOT buffer before we
-                     // can return.
-                     b.wait();
-                     a.wait();
-                     return b.get() + a.get();
-                   },
-                   std::move(future1),
-                   std::move(future2));
+    std::future<IOSize> task = std::async(
+        std::launch::deferred,
+        [](std::future<IOSize> a, std::future<IOSize> b) {
+          // Wait until *both* results are available.  This is essential
+          // as the callback may try referencing the RequestManager.  If one
+          // throws an exception (causing the RequestManager to be destroyed by
+          // XrdFile) and the other has a failure, then the recovery code will
+          // reference the destroyed RequestManager.
+          //
+          // Unlike other places where we use shared/weak ptrs to maintain object
+          // lifetime and destruction asynchronously, we *cannot* destroy the request
+          // asynchronously as it is associated with a ROOT buffer.  We must wait until we
+          // are guaranteed that XrdCl will not write into the ROOT buffer before we
+          // can return.
+          b.wait();
+          a.wait();
+          return b.get() + a.get();
+        },
+        std::move(future1),
+        std::move(future2));
     timer.stop();
     //edm::LogVerbatim("XrdAdaptorInternal") << "Total time to create requests " << static_cast<int>(1000*timer.realTime()) << std::endl;
     return task;

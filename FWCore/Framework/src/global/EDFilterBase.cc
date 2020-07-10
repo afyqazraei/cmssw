@@ -17,6 +17,7 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/Framework/interface/LuminosityBlock.h"
+#include "FWCore/Framework/interface/ProcessBlock.h"
 #include "FWCore/Framework/interface/Run.h"
 #include "FWCore/Framework/src/edmodule_mightGet_config.h"
 #include "FWCore/Framework/src/PreallocationConfiguration.h"
@@ -56,7 +57,7 @@ namespace edm {
       e.setProducer(
           this, &previousParentages_[streamIndex], hasAcquire() ? &gotBranchIDsFromAcquire_[streamIndex] : nullptr);
       EventSignalsSentry sentry(act, mcc);
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::Event), esGetTokenIndices(Transition::Event)};
+      const EventSetup c{ci, static_cast<unsigned int>(Transition::Event), esGetTokenIndices(Transition::Event), false};
       bool returnValue = this->filter(e.streamID(), e, c);
       commit_(e, &previousParentageIds_[streamIndex]);
       return returnValue;
@@ -72,7 +73,7 @@ namespace edm {
       const auto streamIndex = e.streamID().value();
       e.setProducerForAcquire(this, nullptr, gotBranchIDsFromAcquire_[streamIndex]);
       EventAcquireSignalsSentry sentry(act, mcc);
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::Event), esGetTokenIndices(Transition::Event)};
+      const EventSetup c{ci, static_cast<unsigned int>(Transition::Event), esGetTokenIndices(Transition::Event), false};
       this->doAcquire_(e.streamID(), e, c, holder);
     }
 
@@ -85,6 +86,7 @@ namespace edm {
       previousParentageIds_.reset(new ParentageID[nStreams]);
       preallocStreams(nStreams);
       preallocLumis(iPrealloc.numberOfLuminosityBlocks());
+      preallocLumisSummary(iPrealloc.numberOfLuminosityBlocks());
       preallocate(iPrealloc);
     }
 
@@ -92,11 +94,39 @@ namespace edm {
 
     void EDFilterBase::doEndJob() { this->endJob(); }
 
+    void EDFilterBase::doBeginProcessBlock(ProcessBlockPrincipal const& pbp, ModuleCallingContext const* mcc) {
+      ProcessBlock processBlock(pbp, moduleDescription_, mcc, false);
+      processBlock.setConsumer(this);
+      ProcessBlock const& constProcessBlock = processBlock;
+      this->doBeginProcessBlock_(constProcessBlock);
+      processBlock.setProducer(this);
+      this->doBeginProcessBlockProduce_(processBlock);
+      commit_(processBlock);
+    }
+
+    void EDFilterBase::doAccessInputProcessBlock(ProcessBlockPrincipal const& pbp, ModuleCallingContext const* mcc) {
+      ProcessBlock processBlock(pbp, moduleDescription_, mcc, false);
+      processBlock.setConsumer(this);
+      ProcessBlock const& constProcessBlock = processBlock;
+      this->doAccessInputProcessBlock_(constProcessBlock);
+    }
+
+    void EDFilterBase::doEndProcessBlock(ProcessBlockPrincipal const& pbp, ModuleCallingContext const* mcc) {
+      ProcessBlock processBlock(pbp, moduleDescription_, mcc, true);
+      processBlock.setConsumer(this);
+      ProcessBlock const& constProcessBlock = processBlock;
+      this->doEndProcessBlock_(constProcessBlock);
+      processBlock.setProducer(this);
+      this->doEndProcessBlockProduce_(processBlock);
+      commit_(processBlock);
+    }
+
     void EDFilterBase::doBeginRun(RunPrincipal const& rp, EventSetupImpl const& ci, ModuleCallingContext const* mcc) {
       Run r(rp, moduleDescription_, mcc, false);
       r.setConsumer(this);
       Run const& cnstR = r;
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::BeginRun), esGetTokenIndices(Transition::BeginRun)};
+      const EventSetup c{
+          ci, static_cast<unsigned int>(Transition::BeginRun), esGetTokenIndices(Transition::BeginRun), false};
       this->doBeginRun_(cnstR, c);
       this->doBeginRunSummary_(cnstR, c);
       r.setProducer(this);
@@ -109,7 +139,8 @@ namespace edm {
       r.setConsumer(this);
       r.setProducer(this);
       Run const& cnstR = r;
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::EndRun), esGetTokenIndices(Transition::EndRun)};
+      const EventSetup c{
+          ci, static_cast<unsigned int>(Transition::EndRun), esGetTokenIndices(Transition::EndRun), false};
       this->doEndRunSummary_(r, c);
       this->doEndRunProduce_(r, c);
       this->doEndRun_(cnstR, c);
@@ -124,7 +155,8 @@ namespace edm {
       LuminosityBlock const& cnstLb = lb;
       const EventSetup c{ci,
                          static_cast<unsigned int>(Transition::BeginLuminosityBlock),
-                         esGetTokenIndices(Transition::BeginLuminosityBlock)};
+                         esGetTokenIndices(Transition::BeginLuminosityBlock),
+                         false};
       this->doBeginLuminosityBlock_(cnstLb, c);
       this->doBeginLuminosityBlockSummary_(cnstLb, c);
       lb.setProducer(this);
@@ -141,7 +173,8 @@ namespace edm {
       LuminosityBlock const& cnstLb = lb;
       const EventSetup c{ci,
                          static_cast<unsigned int>(Transition::EndLuminosityBlock),
-                         esGetTokenIndices(Transition::EndLuminosityBlock)};
+                         esGetTokenIndices(Transition::EndLuminosityBlock),
+                         false};
       this->doEndLuminosityBlockSummary_(cnstLb, c);
       this->doEndLuminosityBlockProduce_(lb, c);
       this->doEndLuminosityBlock_(cnstLb, c);
@@ -156,7 +189,8 @@ namespace edm {
                                         ModuleCallingContext const* mcc) {
       Run r(rp, moduleDescription_, mcc, false);
       r.setConsumer(this);
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::BeginRun), esGetTokenIndices(Transition::BeginRun)};
+      const EventSetup c{
+          ci, static_cast<unsigned int>(Transition::BeginRun), esGetTokenIndices(Transition::BeginRun), false};
       this->doStreamBeginRun_(id, r, c);
     }
     void EDFilterBase::doStreamEndRun(StreamID id,
@@ -165,7 +199,8 @@ namespace edm {
                                       ModuleCallingContext const* mcc) {
       Run r(rp, moduleDescription_, mcc, true);
       r.setConsumer(this);
-      const EventSetup c{ci, static_cast<unsigned int>(Transition::EndRun), esGetTokenIndices(Transition::EndRun)};
+      const EventSetup c{
+          ci, static_cast<unsigned int>(Transition::EndRun), esGetTokenIndices(Transition::EndRun), false};
       this->doStreamEndRun_(id, r, c);
       this->doStreamEndRunSummary_(id, r, c);
     }
@@ -177,7 +212,8 @@ namespace edm {
       lb.setConsumer(this);
       const EventSetup c{ci,
                          static_cast<unsigned int>(Transition::BeginLuminosityBlock),
-                         esGetTokenIndices(Transition::BeginLuminosityBlock)};
+                         esGetTokenIndices(Transition::BeginLuminosityBlock),
+                         false};
       this->doStreamBeginLuminosityBlock_(id, lb, c);
     }
 
@@ -189,7 +225,8 @@ namespace edm {
       lb.setConsumer(this);
       const EventSetup c{ci,
                          static_cast<unsigned int>(Transition::EndLuminosityBlock),
-                         esGetTokenIndices(Transition::EndLuminosityBlock)};
+                         esGetTokenIndices(Transition::EndLuminosityBlock),
+                         false};
       this->doStreamEndLuminosityBlock_(id, lb, c);
       this->doStreamEndLuminosityBlockSummary_(id, lb, c);
     }
@@ -204,6 +241,7 @@ namespace edm {
 
     void EDFilterBase::preallocStreams(unsigned int) {}
     void EDFilterBase::preallocLumis(unsigned int) {}
+    void EDFilterBase::preallocLumisSummary(unsigned int) {}
     void EDFilterBase::preallocate(PreallocationConfiguration const&) {}
     void EDFilterBase::doBeginStream_(StreamID id) {}
     void EDFilterBase::doEndStream_(StreamID id) {}
@@ -216,6 +254,9 @@ namespace edm {
                                                           LuminosityBlock const& lbp,
                                                           EventSetup const& c) {}
 
+    void EDFilterBase::doBeginProcessBlock_(ProcessBlock const&) {}
+    void EDFilterBase::doAccessInputProcessBlock_(ProcessBlock const&) {}
+    void EDFilterBase::doEndProcessBlock_(ProcessBlock const&) {}
     void EDFilterBase::doBeginRun_(Run const& rp, EventSetup const& c) {}
     void EDFilterBase::doEndRun_(Run const& rp, EventSetup const& c) {}
     void EDFilterBase::doBeginRunSummary_(Run const& rp, EventSetup const& c) {}
@@ -226,6 +267,8 @@ namespace edm {
     void EDFilterBase::doBeginLuminosityBlockSummary_(LuminosityBlock const& rp, EventSetup const& c) {}
     void EDFilterBase::doEndLuminosityBlockSummary_(LuminosityBlock const& lb, EventSetup const& c) {}
 
+    void EDFilterBase::doBeginProcessBlockProduce_(ProcessBlock&) {}
+    void EDFilterBase::doEndProcessBlockProduce_(ProcessBlock&) {}
     void EDFilterBase::doBeginRunProduce_(Run& rp, EventSetup const& c) {}
     void EDFilterBase::doEndRunProduce_(Run& rp, EventSetup const& c) {}
     void EDFilterBase::doBeginLuminosityBlockProduce_(LuminosityBlock& lbp, EventSetup const& c) {}

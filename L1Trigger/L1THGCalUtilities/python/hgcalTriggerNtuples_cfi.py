@@ -69,6 +69,11 @@ ntuple_triggercells = cms.PSet(
     FilterCellsInMulticlusters = cms.bool(False)
 )
 
+ntuple_triggersums = cms.PSet(
+    NtupleName = cms.string('HGCalTriggerNtupleHGCTriggerSums'),
+    TriggerSums = cms.InputTag('hgcalConcentratorProducer:HGCalConcentratorProcessorSelection'),
+)
+
 ntuple_clusters = cms.PSet(
     NtupleName = cms.string('HGCalTriggerNtupleHGCClusters'),
     Clusters = cms.InputTag('hgcalBackEndLayer1Producer:HGCalBackendLayer1Processor2DClustering'),
@@ -81,7 +86,8 @@ ntuple_multiclusters = cms.PSet(
     NtupleName = cms.string('HGCalTriggerNtupleHGCMulticlusters'),
     Multiclusters = cms.InputTag('hgcalBackEndLayer2Producer:HGCalBackendLayer2Processor3DClustering'),
     EGIdentification = egamma_identification_histomax.clone(),
-    FillLayerInfo = cms.bool(False)
+    FillLayerInfo = cms.bool(False),
+    FillInterpretationInfo = cms.bool(True)
 )
 
 ntuple_panels = cms.PSet(
@@ -103,6 +109,7 @@ hgcalTriggerNtuplizer = cms.EDAnalyzer(
         ntuple_gentau,
         ntuple_digis,
         ntuple_triggercells,
+        ntuple_triggersums,
         ntuple_multiclusters,
         ntuple_towers
     )

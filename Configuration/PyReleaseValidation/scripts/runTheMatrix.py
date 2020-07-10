@@ -24,10 +24,10 @@ def runSelected(opt):
 
     # test for wrong input workflows
     if opt.testList:
-        definedWF = []
-        for dwf in mrd.workFlows: definedWF.append(dwf.numId)
-        for twf in opt.testList:
-            if twf not in definedWF: raise ValueError('Not defined workflow ', twf , ' requested')
+        definedSet = set([dwf.numId for dwf in mrd.workFlows])
+        testSet = set(opt.testList)
+        undefSet = testSet - definedSet
+        if len(undefSet)>0: raise ValueError('Undefined workflows: '+', '.join(map(str,list(undefSet))))
 
     ret = 0
     if opt.show:
@@ -68,11 +68,13 @@ if __name__ == '__main__':
                      136.731, #2016B Photon data
                      136.7611, #2016E JetHT reMINIAOD from 80X legacy
                      136.8311, #2017F JetHT reMINIAOD from 94X reprocessing
-                     136.788, #2017B Photon data
-                     136.85, #2018A Egamma data
+                     136.88811,#2018D JetHT reMINIAOD from UL processing
+                     136.793, #2017C DoubleEG
+                     136.874, #2018C EGamma
                      140.53, #2011 HI data
                      140.56, #2018 HI data
                      158.0, #2018 HI MC with pp-like reco
+                     158.01, #reMiniAOD of 2018 HI MC with pp-like reco
                      1306.0, #SingleMu Pt1 UP15
                      1325.7, #test NanoAOD from existing MINI
                      1330, #Run2 MC Zmm
@@ -86,7 +88,8 @@ if __name__ == '__main__':
                      20034.0, #2026D35 ttbar (MTD TDR baseline)
                      20434.0, #2026D41 ttbar (L1T TDR baseline)
                      21234.0, #2026D44 (exercise HF nose)
-                     22034.0, #2026D46 ttbar (exercise V11 HGCal)
+                     23234.0, #2026D49 ttbar (HLT TDR baseline w/ HGCal v11)
+                     23234.1001, #as 23234.0 but reading 11_0_X digi inputs
                      25202.0, #2016 ttbar UP15 PU
                      250202.181, #2018 ttbar stage1 + stage2 premix
                      ],
@@ -126,6 +129,11 @@ if __name__ == '__main__':
                       help='number of threads per process to use in cmsRun.',
                       dest='nThreads',
                       default=1
+                     )
+    parser.add_option('--numberEventsInLuminosityBlock',
+                      help='number of events in a luminosity block',
+                      dest='numberEventsInLuminosityBlock',
+                      default=-1
                      )
 
     parser.add_option('-n','--showMatrix',
@@ -273,7 +281,9 @@ if __name__ == '__main__':
     opt,args = parser.parse_args()
     if opt.IBEos:
       import os
-      from commands import getstatusoutput as run_cmd
+      try:from commands import getstatusoutput as run_cmd
+      except:from subprocess import getstatusoutput as run_cmd
+
       ibeos_cache = os.path.join(os.getenv("LOCALRT"), "ibeos_cache.txt")
       if not os.path.exists(ibeos_cache):
         err, out = run_cmd("curl -L -s -o %s https://raw.githubusercontent.com/cms-sw/cms-sw.github.io/master/das_queries/ibeos.txt" % ibeos_cache)
@@ -333,6 +343,7 @@ if __name__ == '__main__':
     if opt.fromScratch: opt.fromScratch = opt.fromScratch.split(',')
     if opt.nProcs: opt.nProcs=int(opt.nProcs)
     if opt.nThreads: opt.nThreads=int(opt.nThreads)
+    if (opt.numberEventsInLuminosityBlock): opt.numberEventsInLuminosityBlock=int(opt.numberEventsInLuminosityBlock)
     if (opt.memoryOffset): opt.memoryOffset=int(opt.memoryOffset)
     if (opt.memPerCore): opt.memPerCore=int(opt.memPerCore)
 

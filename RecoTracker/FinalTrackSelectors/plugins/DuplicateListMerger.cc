@@ -101,7 +101,7 @@ namespace {
   }
 
   DuplicateListMerger::DuplicateListMerger(const edm::ParameterSet& iPara)
-      : collectionCloner(*this, iPara, true),
+      : collectionCloner(producesCollector(), iPara, true),
         mergedTrackSource_(iPara.getParameter<edm::InputTag>("mergedSource"), consumesCollector()),
         originalTrackSource_(iPara.getParameter<edm::InputTag>("originalSource"), consumesCollector()),
         priorityName_(iPara.getParameter<std::string>("trackAlgoPriorityOrder")) {
@@ -159,7 +159,7 @@ namespace {
         continue;  // at least "loose"  ( FIXME: take cut value from CutSelector)
 
       // if( ChiSquaredProbability(matchedTrack.chi2(),matchedTrack.ndof()) < minTrkProbCut_)continue;
-      int dHits = (cand.recHits().second - cand.recHits().first) - matchedTrack.recHitsSize();
+      int dHits = cand.nRecHits() - matchedTrack.recHitsSize();
       if (dHits > diffHitsCut_)
         continue;
       matches.push_back(std::array<int, 3>{{i, candidateComponents[cInd].first, candidateComponents[cInd].second}});

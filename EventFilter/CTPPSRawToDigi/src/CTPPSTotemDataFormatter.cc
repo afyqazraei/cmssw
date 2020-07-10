@@ -54,14 +54,14 @@ void CTPPSTotemDataFormatter::formatRawData(unsigned int lvl1_ID,
     for (auto const &it : detDigis) {
       m_DigiCounter++;
       const int nCH = 128;
-      int nStrip = it.getStripNumber();
+      int nStrip = it.stripNumber();
       int chipPosition = nStrip / nCH;
       int channel = nStrip - chipPosition * nCH;        //channel from DIGI
       uint32_t newrawId = rawId + 8192 * chipPosition;  //8192 - distance between chipIds
       mapIdCh[newrawId].push_back(channel);
     }
     for (auto &pId : mapIdCh) {
-      PPSStripIndex myTest = {pId.first};
+      PPSStripIndex myTest = {pId.first, 0, 0, 0, 0};
 
       // the range has always at most one element
       auto range = std::equal_range(iDdet2fed.begin(), iDdet2fed.end(), myTest, compare);

@@ -5,6 +5,9 @@ import os
 import copy
 import multiprocessing
 import time
+import re
+
+MAXWORKFLOWLENGTH = 81
 
 def performInjectionOptionTest(opt):
     if opt.show:
@@ -53,6 +56,7 @@ class MatrixInjector(object):
         self.keep = opt.keep
         self.memoryOffset = opt.memoryOffset
         self.memPerCore = opt.memPerCore
+        self.numberEventsInLuminosityBlock = opt.numberEventsInLuminosityBlock
         self.batchName = ''
         self.batchTime = str(int(time.time()))
         if(opt.batchName):
@@ -81,7 +85,7 @@ class MatrixInjector(object):
         self.speciallabel=''
         if opt.label:
             self.speciallabel= '_'+opt.label
-
+        self.longWFName = []
 
         if not os.getenv('WMCORE_ROOT'):
             print('\n\twmclient is not setup properly. Will not be able to upload or submit requests.\n')
@@ -128,6 +132,7 @@ class MatrixInjector(object):
             "GlobalTag": None,
             "SplittingAlgo"  : "EventBased",             #Splitting Algorithm
             "EventsPerJob" : None,                       #Size of jobs in terms of splitting algorithm
+            "EventsPerLumi" : None,
             "RequestNumEvents" : None,                      #Total number of events to generate
             "Seeding" : "AutomaticSeeding",                          #Random seeding method
             "PrimaryDataset" : None,                          #Primary Dataset to be created
@@ -225,6 +230,23 @@ class MatrixInjector(object):
             wmsplit['RECODR2_2018reHLT_skimCharmonium_Prompt']=1
             wmsplit['RECODR2_2018reHLT_skimJetHT_Prompt_HEfail']=1
             wmsplit['RECODR2_2018reHLT_skimJetHT_Prompt_BadHcalMitig']=1
+            wmsplit['RECODR2_2018reHLTAlCaTkCosmics_Prompt']=1
+            wmsplit['RECODR2_2018reHLT_skimDisplacedJet_Prompt']=1
+            wmsplit['RECODR2_2018reHLT_ZBPrompt']=1
+            wmsplit['RECODR2_2018reHLT_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimSingleMu_Offline_Lumi']=1
+            wmsplit['RECODR2_2018reHLT_skimDoubleEG_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimJetHT_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimMET_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimMuOnia_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimEGamma_Offline_L1TEgDQM']=1
+            wmsplit['RECODR2_2018reHLT_skimMuonEG_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimCharmonium_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimJetHT_Offline_HEfail']=1
+            wmsplit['RECODR2_2018reHLT_skimJetHT_Offline_BadHcalMitig']=1
+            wmsplit['RECODR2_2018reHLTAlCaTkCosmics_Offline']=1
+            wmsplit['RECODR2_2018reHLT_skimDisplacedJet_Offline']=1
+            wmsplit['RECODR2_2018reHLT_ZBOffline']=1
             wmsplit['HLTDR2_50ns']=1
             wmsplit['HLTDR2_25ns']=1
             wmsplit['HLTDR2_2016']=1
@@ -259,7 +281,37 @@ class MatrixInjector(object):
             wmsplit['HYBRIDZSHI2015']=1
             wmsplit['RECOHID15']=1
             wmsplit['RECOHID18']=1
-                                    
+            wmsplit['DigiFullTriggerPU_2026D35PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D35PU']=1
+            wmsplit['DigiFullTriggerPU_2026D41PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D41PU']=1
+            wmsplit['DigiFullTriggerPU_2026D43PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D43PU']=1
+            wmsplit['DigiFullTriggerPU_2026D44PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D44PU']=1
+            wmsplit['DigiFullTriggerPU_2026D45PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D45PU']=1
+            wmsplit['DigiFullTriggerPU_2026D46PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D46PU']=1
+            wmsplit['DigiFullTriggerPU_2026D47PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D47PU']=1
+            wmsplit['DigiFullTriggerPU_2026D48PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D48PU']=1
+            wmsplit['DigiFullTriggerPU_2026D49PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D49PU']=1
+            wmsplit['DigiFullTriggerPU_2026D50PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D50PU']=1
+            wmsplit['DigiFullTriggerPU_2026D51PU'] = 1
+            wmsplit['RecoFullGlobalPU_2026D51PU']=1
+            wmsplit['DigiFullTriggerPU_2026D52PU'] = 1	
+            wmsplit['RecoFullGlobalPU_2026D52PU']=1           
+            wmsplit['DigiFullTriggerPU_2026D57PU'] = 1	
+            wmsplit['RecoFullGlobalPU_2026D57PU']=1           
+            wmsplit['DigiFullTriggerPU_2026D58PU'] = 1	
+            wmsplit['RecoFullGlobalPU_2026D58PU']=1           
+            wmsplit['DigiFullTriggerPU_2026D59PU'] = 1	
+            wmsplit['RecoFullGlobalPU_2026D59PU']=1           
+                         
             #import pprint
             #pprint.pprint(wmsplit)            
         except:
@@ -312,9 +364,17 @@ class MatrixInjector(object):
                                     return -12
                                 else:
                                     arg=s[2][index].split()
-                                    ns=map(int,arg[arg.index('--relval')+1].split(','))
+                                    ns=list(map(int,arg[len(arg) - arg[-1::-1].index('--relval')].split(',')))
                                     chainDict['nowmTasklist'][-1]['RequestNumEvents'] = ns[0]
                                     chainDict['nowmTasklist'][-1]['EventsPerJob'] = ns[1]
+                                    chainDict['nowmTasklist'][-1]['EventsPerLumi'] = ns[1]
+                                    #overwrite EventsPerLumi if numberEventsInLuminosityBlock is set in cmsDriver
+                                    if 'numberEventsInLuminosityBlock' in s[2][index]:
+                                        nEventsInLuminosityBlock = re.findall('process.source.numberEventsInLuminosityBlock=cms.untracked.uint32\(([ 0-9 ]*)\)', s[2][index],re.DOTALL)
+                                        if nEventsInLuminosityBlock[-1].isdigit() and int(nEventsInLuminosityBlock[-1]) < ns[1]:
+                                            chainDict['nowmTasklist'][-1]['EventsPerLumi'] = int(nEventsInLuminosityBlock[-1])
+                                    if(self.numberEventsInLuminosityBlock > 0 and self.numberEventsInLuminosityBlock <= ns[1]):
+                                        chainDict['nowmTasklist'][-1]['EventsPerLumi'] = self.numberEventsInLuminosityBlock
                                 if 'FASTSIM' in s[2][index] or '--fast' in s[2][index]:
                                     thisLabel+='_FastSim'
                                 if 'lhe' in s[2][index] in s[2][index]:
@@ -425,6 +485,10 @@ class MatrixInjector(object):
                     chainDict['RequestString']='RV'+chainDict['CMSSWVersion']+s[1].split('+')[0]
                     if processStrPrefix or thisLabel:
                         chainDict['RequestString']+='_'+processStrPrefix+thisLabel
+                    #check candidate WF name
+                    self.candidateWFName = self.user+'_'+chainDict['RequestString']
+                    if (len(self.candidateWFName)>MAXWORKFLOWLENGTH):
+                        self.longWFName.append(self.candidateWFName)
 
 ### PrepID
                     chainDict['PrepID'] = chainDict['CMSSWVersion']+'__'+self.batchTime+'-'+s[1].split('+')[0]
@@ -449,11 +513,19 @@ class MatrixInjector(object):
                         for (om,o) in t_input['nowmIO'].items():
                             if primary in o:
                                 #print "found",primary,"procuced by",om,"of",t_input['TaskName']
+                                #ad-hoc fix due to restriction in TaskName of 50 characters
+                                if (len(t_input['TaskName'])>50):
+                                    if (t_input['TaskName'].find('GenSim') != -1):
+                                        t_input['TaskName'] = 'GenSimFull'
+                                    if (t_input['TaskName'].find('Hadronizer') != -1):
+                                        t_input['TaskName'] = 'HadronizerFull'
                                 t_second['InputTask'] = t_input['TaskName']
                                 t_second['InputFromOutputModule'] = om
                                 #print 't_second',pprint.pformat(t_second)
                                 if t_second['TaskName'].startswith('HARVEST'):
                                     chainDict.update(copy.deepcopy(self.defaultHarvest))
+                                    if "_RD" in t_second['TaskName']:
+                                        chainDict['DQMHarvestUnit'] = "multiRun"
                                     chainDict['DQMConfigCacheID']=t_second['ConfigCacheID']
                                     ## the info are not in the task specific dict but in the general dict
                                     #t_input.update(copy.deepcopy(self.defaultHarvest))
@@ -587,6 +659,6 @@ class MatrixInjector(object):
                 workFlow=makeRequest(self.wmagent,d,encodeDict=True)
                 print("...........",n,"submitted")
                 random_sleep()
-            
-
-        
+        if self.testMode and len(self.longWFName)>0:
+            print("\n*** WARNING: "+str(len(self.longWFName))+" workflows have too long names for submission (>"+str(MAXWORKFLOWLENGTH)+ "characters) ***")
+            print('\n'.join(self.longWFName))

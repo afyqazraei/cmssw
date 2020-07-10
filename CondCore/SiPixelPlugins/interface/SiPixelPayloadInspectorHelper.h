@@ -3,7 +3,11 @@
 
 #include <vector>
 #include <numeric>
+#include <fstream>  // std::ifstream
 #include <string>
+#include <boost/tokenizer.hpp>
+#include <boost/range/adaptor/indexed.hpp>
+
 #include "TGraph.h"
 #include "TH1.h"
 #include "TH2.h"
@@ -14,18 +18,30 @@
 #include "TPaveText.h"
 #include "TStyle.h"
 #include "TCanvas.h"
+
 #include "CondCore/CondDB/interface/Time.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
+#include "FWCore/ParameterSet/interface/FileInPath.h"
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "DataFormats/SiPixelDetId/interface/PixelSubdetector.h"
 #include "DataFormats/SiPixelDetId/interface/PixelBarrelName.h"
 #include "DataFormats/SiPixelDetId/interface/PixelEndcapName.h"
 
+//#define MMDEBUG
+#ifdef MMDEBUG
+#include <iostream>
+#define COUT std::cout << "MM "
+#else
+#define COUT edm::LogVerbatim("")
+#endif
+
 namespace SiPixelPI {
 
   // size of the phase-0 pixel detID list
   static const unsigned int phase0size = 1440;
+  static const unsigned int phase1size = 1856;
 
+  //============================================================================
   std::pair<unsigned int, unsigned int> unpack(cond::Time_t since) {
     auto kLowMask = 0XFFFFFFFF;
     auto run = (since >> 32);
@@ -130,8 +146,14 @@ namespace SiPixelPI {
   }
 
   //============================================================================
-  void dress_occup_plot(
-      TCanvas& canv, TH2* h, int lay, int ring = 0, int phase = 0, bool half_shift = true, bool mark_zero = true) {
+  void dress_occup_plot(TCanvas& canv,
+                        TH2* h,
+                        int lay,
+                        int ring = 0,
+                        int phase = 0,
+                        bool half_shift = true,
+                        bool mark_zero = true,
+                        bool standard_palette = true) {
     std::string s_title;
 
     if (lay > 0) {
@@ -143,10 +165,24 @@ namespace SiPixelPI {
     }
 
     gStyle->SetPadRightMargin(0.125);
-    gStyle->SetPalette(1);
+
+    if (standard_palette) {
+      gStyle->SetPalette(1);
+    } else {
+      // this is the fine gradient palette
+      const Int_t NRGBs = 5;
+      const Int_t NCont = 255;
+
+      Double_t stops[NRGBs] = {0.00, 0.34, 0.61, 0.84, 1.00};
+      Double_t red[NRGBs] = {0.00, 0.00, 0.87, 1.00, 0.51};
+      Double_t green[NRGBs] = {0.00, 0.81, 1.00, 0.20, 0.00};
+      Double_t blue[NRGBs] = {0.51, 1.00, 0.12, 0.00, 0.00};
+      TColor::CreateGradientColorTable(NRGBs, stops, red, green, blue, NCont);
+      gStyle->SetNumberContours(NCont);
+    }
 
     h->SetMarkerSize(0.7);
-    h->Draw("colz");
+    h->Draw("colz1");
 
     auto ltx = TLatex();
     ltx.SetTextFont(62);
@@ -157,7 +193,7 @@ namespace SiPixelPI {
 
     // Draw Lines around modules
     if (lay > 0) {
-      std::vector<std::vector<int> > nladder = {{10, 16, 22}, {6, 14, 22, 32}};
+      std::vector<std::vector<int>> nladder = {{10, 16, 22}, {6, 14, 22, 32}};
       int nlad = nladder[phase][lay - 1];
       for (int xsign = -1; xsign <= 1; xsign += 2)
         for (int ysign = -1; ysign <= 1; ysign += 2) {
@@ -397,6 +433,30 @@ namespace SiPixelPI {
   }
 
   /*--------------------------------------------------------------------*/
+  void adjustCanvasMargins(TVirtualPad* pad, float top, float bottom, float left, float right)
+  /*--------------------------------------------------------------------*/
+  {
+    if (top > 0)
+      pad->SetTopMargin(top);
+    if (bottom > 0)
+      pad->SetBottomMargin(bottom);
+    if (left > 0)
+      pad->SetLeftMargin(left);
+    if (right > 0)
+      pad->SetRightMargin(right);
+  }
+
+  /*--------------------------------------------------------------------*/
+  void adjustStats(TPaveStats* stats, float X1, float Y1, float X2, float Y2)
+  /*--------------------------------------------------------------------*/
+  {
+    stats->SetX1NDC(X1);  //new x start position
+    stats->SetY1NDC(Y1);  //new y start position
+    stats->SetX2NDC(X2);  //new x end position
+    stats->SetY2NDC(Y2);  //new y end position
+  }
+
+  /*--------------------------------------------------------------------*/
   std::pair<float, float> getExtrema(TH1* h1, TH1* h2)
   /*--------------------------------------------------------------------*/
   {
@@ -430,6 +490,13 @@ namespace SiPixelPI {
     hist->GetYaxis()->SetLabelFont(42);
     hist->GetYaxis()->SetLabelSize(.05);
     hist->GetXaxis()->SetLabelSize(.05);
+
+    if (hist->InheritsFrom(TH2::Class())) {
+      hist->GetZaxis()->SetLabelFont(42);
+      hist->GetZaxis()->SetLabelFont(42);
+      hist->GetZaxis()->SetLabelSize(.05);
+      hist->GetZaxis()->SetLabelSize(.05);
+    }
   }
 
   enum regions {
@@ -626,5 +693,319 @@ namespace SiPixelPI {
     return ret;
   }
 
+  // overloaded method: mask entire module
+  /*--------------------------------------------------------------------*/
+  std::vector<std::pair<int, int>> maskedBarrelRocsToBins(int layer, int ladder, int module)
+  /*--------------------------------------------------------------------*/
+  {
+    std::vector<std::pair<int, int>> rocsToMask;
+
+    int nlad_list[4] = {6, 14, 22, 32};
+    int nlad = nlad_list[layer - 1];
+
+    int start_x = module > 0 ? ((module + 4) * 8) + 1 : ((4 - (std::abs(module))) * 8) + 1;
+    int start_y = ladder > 0 ? ((ladder + nlad) * 2) + 1 : ((nlad - (std::abs(ladder))) * 2) + 1;
+
+    int end_x = start_x + 7;
+    int end_y = start_y + 1;
+
+    COUT << "module: " << module << " start_x:" << start_x << " end_x:" << end_x << std::endl;
+    COUT << "ladder: " << ladder << " start_y:" << start_y << " end_y:" << end_y << std::endl;
+    COUT << "==================================================================" << std::endl;
+
+    for (int bin_x = 1; bin_x <= 72; bin_x++) {
+      for (int bin_y = 1; bin_y <= (nlad * 4 + 2); bin_y++) {
+        if (bin_x >= start_x && bin_x <= end_x && bin_y >= start_y && bin_y <= end_y) {
+          rocsToMask.push_back(std::make_pair(bin_x, bin_y));
+        }
+      }
+    }
+    return rocsToMask;
+  }
+
+  // overloaded method: mask single ROCs
+  /*--------------------------------------------------------------------*/
+  std::vector<std::tuple<int, int, int>> maskedBarrelRocsToBins(
+      int layer, int ladder, int module, std::bitset<16> bad_rocs, bool isFlipped)
+  /*--------------------------------------------------------------------*/
+  {
+    std::vector<std::tuple<int, int, int>> rocsToMask;
+
+    int nlad_list[4] = {6, 14, 22, 32};
+    int nlad = nlad_list[layer - 1];
+
+    int start_x = module > 0 ? ((module + 4) * 8) + 1 : ((4 - (std::abs(module))) * 8) + 1;
+    int start_y = ladder > 0 ? ((ladder + nlad) * 2) + 1 : ((nlad - (std::abs(ladder))) * 2) + 1;
+
+    int roc0_x = ((layer == 1) || (layer > 1 && module > 0)) ? start_x + 7 : start_x;
+    int roc0_y = start_y - 1;
+
+    size_t idx = 0;
+    while (idx < bad_rocs.size()) {
+      if (bad_rocs.test(idx)) {
+        //////////////////////////////////////////////////////////////////////////////////////
+        //		                          |					    //
+        // In BPix Layer1 and module>0 in L2,3,4  |   In BPix Layer 2,3,4 module > 0	    //
+        //                                        |					    //
+        // ROCs are ordered in the following      |   ROCs are ordered in the following     //
+        // fashion for unplipped modules 	  |   fashion for unplipped modules         //
+        //					  |  				            //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 8 |9  |10 |11 |12 |13 |14 |15 |      |   |15 |14 |13 |12 |11 |10 | 9 | 8 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |      |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        //					  |  					    //
+        // if the module is flipped the ordering  |   if the module is flipped the ordering //
+        // is reveresed                           |   is reversed                           //
+        //					  |                                         //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |      |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 8 | 9 |10 |11 |12 |13 |14 |15 |      |   |15 |14 |13 |12 |11 |10 | 9 | 8 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        int roc_x(0), roc_y(0);
+
+        if ((layer == 1) || (layer > 1 && module > 0)) {
+          if (!isFlipped) {
+            roc_x = idx < 8 ? roc0_x - idx : (start_x - 8) + idx;
+            roc_y = idx < 8 ? roc0_y + 1 : roc0_y + 2;
+          } else {
+            roc_x = idx < 8 ? roc0_x - idx : (start_x - 8) + idx;
+            roc_y = idx < 8 ? roc0_y + 2 : roc0_y + 1;
+          }
+        } else {
+          if (!isFlipped) {
+            roc_x = idx < 8 ? roc0_x + idx : (roc0_x + 7) - (idx - 8);
+            roc_y = idx < 8 ? roc0_y + 1 : roc0_y + 2;
+          } else {
+            roc_x = idx < 8 ? roc0_x + idx : (roc0_x + 7) - (idx - 8);
+            roc_y = idx < 8 ? roc0_y + 2 : roc0_y + 1;
+          }
+        }
+
+        COUT << bad_rocs << " : (idx)= " << idx << std::endl;
+        COUT << " layer:  " << layer << std::endl;
+        COUT << "module: " << module << " roc_x:" << roc_x << std::endl;
+        COUT << "ladder: " << ladder << " roc_y:" << roc_y << std::endl;
+        COUT << "==================================================================" << std::endl;
+
+        rocsToMask.push_back(std::make_tuple(roc_x, roc_y, idx));
+      }
+      ++idx;
+    }
+    return rocsToMask;
+  }
+
+  // overloaded method: mask entire module
+  /*--------------------------------------------------------------------*/
+  std::vector<std::pair<int, int>> maskedForwardRocsToBins(int ring, int blade, int panel, int disk)
+  /*--------------------------------------------------------------------*/
+  {
+    std::vector<std::pair<int, int>> rocsToMask;
+    int nybins_list[2] = {92, 140};
+    int nybins = nybins_list[ring - 1];
+
+    int start_x = disk > 0 ? ((disk + 3) * 8) + 1 : ((3 - (std::abs(disk))) * 8) + 1;
+    int start_y = blade > 0 ? (nybins / 2) + (blade * 4) - (panel * 2) + 3
+                            : ((nybins / 2) - (std::abs(blade) * 4) - panel * 2) + 3;
+
+    int end_x = start_x + 7;
+    int end_y = start_y + 1;
+
+    COUT << "==================================================================" << std::endl;
+    COUT << "disk:  " << disk << " start_x:" << start_x << " end_x:" << end_x << std::endl;
+    COUT << "blade: " << blade << " start_y:" << start_y << " end_y:" << end_y << std::endl;
+
+    for (int bin_x = 1; bin_x <= 56; bin_x++) {
+      for (int bin_y = 1; bin_y <= nybins; bin_y++) {
+        if (bin_x >= start_x && bin_x <= end_x && bin_y >= start_y && bin_y <= end_y) {
+          rocsToMask.push_back(std::make_pair(bin_x, bin_y));
+        }
+      }
+    }
+    return rocsToMask;
+  }
+
+  // overloaded method: mask single ROCs
+  /*--------------------------------------------------------------------*/
+  std::vector<std::tuple<int, int, int>> maskedForwardRocsToBins(
+      int ring, int blade, int panel, int disk, std::bitset<16> bad_rocs, bool isFlipped)
+  /*--------------------------------------------------------------------*/
+  {
+    std::vector<std::tuple<int, int, int>> rocsToMask;
+    int nybins_list[2] = {92, 140};
+    int nybins = nybins_list[ring - 1];
+
+    int start_x = disk > 0 ? ((disk + 3) * 8) + 1 : ((3 - (std::abs(disk))) * 8) + 1;
+    int start_y = blade > 0 ? (nybins / 2) + (blade * 4) - (panel * 2) + 3
+                            : ((nybins / 2) - (std::abs(blade) * 4) - panel * 2) + 3;
+
+    int roc0_x = disk > 0 ? start_x + 7 : start_x;
+    int roc0_y = start_y - 1;
+
+    size_t idx = 0;
+    while (idx < bad_rocs.size()) {
+      if (bad_rocs.test(idx)) {
+        int roc_x(0), roc_y(0);
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        //		                          |					    //
+        // In FPix + (Disk 1,2,3)                 |   In FPix - (Disk -1,-2,-3)	            //
+        //                                        |					    //
+        // ROCs are ordered in the following      |   ROCs are ordered in the following     //
+        // fashion for unplipped modules 	  |   fashion for unplipped modules         //
+        //					  |  				            //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 8 |9  |10 |11 |12 |13 |14 |15 |      |   |15 |14 |13 |12 |11 |10 | 9 | 8 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |      |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        //					  |  					    //
+        // if the module is flipped the ordering  |   if the module is flipped the ordering //
+        // is reveresed                           |   is reversed                           //
+        //					  |                                         //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |      |   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        // | 8 | 9 |10 |11 |12 |13 |14 |15 |      |   |15 |14 |13 |12 |11 |10 | 9 | 8 |     //
+        // +---+---+---+---+---+---+---+---+      |   +---+---+---+---+---+---+---+---+     //
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        if (disk > 0) {
+          if (!isFlipped) {
+            roc_x = idx < 8 ? roc0_x - idx : (start_x - 8) + idx;
+            roc_y = idx < 8 ? roc0_y + 1 : roc0_y + 2;
+          } else {
+            roc_x = idx < 8 ? roc0_x - idx : (start_x - 8) + idx;
+            roc_y = idx < 8 ? roc0_y + 2 : roc0_y + 1;
+          }
+        } else {
+          if (!isFlipped) {
+            roc_x = idx < 8 ? roc0_x + idx : (roc0_x + 7) - (idx - 8);
+            roc_y = idx < 8 ? roc0_y + 1 : roc0_y + 2;
+          } else {
+            roc_x = idx < 8 ? roc0_x + idx : (roc0_x + 7) - (idx - 8);
+            roc_y = idx < 8 ? roc0_y + 2 : roc0_y + 1;
+          }
+        }
+
+        COUT << bad_rocs << " : (idx)= " << idx << std::endl;
+        COUT << " panel: " << panel << " isFlipped: " << isFlipped << std::endl;
+        COUT << " disk:  " << disk << " roc_x:" << roc_x << std::endl;
+        COUT << " blade: " << blade << " roc_y:" << roc_y << std::endl;
+        COUT << "===============================" << std::endl;
+
+        rocsToMask.push_back(std::make_tuple(roc_x, roc_y, idx));
+      }
+      ++idx;
+    }
+    return rocsToMask;
+  }
+
+  using indexedCorners = std::map<unsigned int, std::pair<std::vector<float>, std::vector<float>>>;
+
+  /*--------------------------------------------------------------------*/
+  const indexedCorners retrieveCorners(const std::vector<edm::FileInPath>& cornerFiles, const unsigned int reads)
+  /*--------------------------------------------------------------------*/
+  {
+    indexedCorners theOutMap;
+
+    for (const auto& file : cornerFiles) {
+      auto cornerFileName = file.fullPath();
+      std::ifstream cornerFile(cornerFileName.c_str());
+      if (!cornerFile.good()) {
+        throw cms::Exception("FileError") << "Problem opening corner file: " << cornerFileName;
+      }
+      std::string line;
+      while (std::getline(cornerFile, line)) {
+        if (!line.empty()) {
+          std::istringstream iss(line);
+          unsigned int id;
+          std::string name;
+          std::vector<std::string> corners(reads, "");
+          std::vector<float> xP, yP;
+
+          iss >> id >> name;
+          for (unsigned int i = 0; i < reads; ++i) {
+            iss >> corners.at(i);
+          }
+
+          COUT << id << " : ";
+          for (unsigned int i = 0; i < reads; i++) {
+            // remove the leading and trailing " signs in the corners list
+            (corners[i]).erase(std::remove(corners[i].begin(), corners[i].end(), '"'), corners[i].end());
+            COUT << corners.at(i) << " ";
+            typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
+            boost::char_separator<char> sep{","};
+            tokenizer tok{corners.at(i), sep};
+            for (const auto& t : tok | boost::adaptors::indexed(0)) {
+              if (t.index() == 0) {
+                xP.push_back(atof((t.value()).c_str()));
+              } else if (t.index() == 1) {
+                yP.push_back(atof((t.value()).c_str()));
+              } else {
+                edm::LogError("LogicError") << "There should not be any token with index " << t.index() << std::endl;
+              }
+            }
+          }
+          COUT << std::endl;
+
+          xP.push_back(xP.front());
+          yP.push_back(yP.front());
+
+          for (unsigned int i = 0; i < xP.size(); i++) {
+            COUT << "x[" << i << "]=" << xP[i] << " y[" << i << "]" << yP[i] << std::endl;
+          }
+
+          theOutMap[id] = std::make_pair(xP, yP);
+
+        }  // if line is empty
+      }    // loop on lines
+    }      // loop on files
+    return theOutMap;
+  }
+
+  /*--------------------------------------------------------------------*/
+  void displayNotSupported(TCanvas& canv, const unsigned int size)
+  /*--------------------------------------------------------------------*/
+  {
+    std::string phase = (size < SiPixelPI::phase1size) ? "Phase-0" : "Phase-2";
+    canv.cd();
+    TLatex t2;
+    t2.SetTextAlign(21);
+    t2.SetTextSize(0.1);
+    t2.SetTextAngle(45);
+    t2.SetTextColor(kRed);
+    t2.DrawLatexNDC(0.6, 0.50, Form("%s  NOT SUPPORTED!", phase.c_str()));
+  }
+
+  /*--------------------------------------------------------------------*/
+  template <typename T>
+  std::pair<T, T> findMinMaxInMap(const std::map<unsigned int, T>& theMap)
+  /*--------------------------------------------------------------------*/
+  {
+    using pairtype = std::pair<unsigned int, T>;
+    auto max = *std::max_element(
+        theMap.begin(), theMap.end(), [](const pairtype& p1, const pairtype& p2) { return p1.second < p2.second; });
+    auto min = *std::min_element(
+        theMap.begin(), theMap.end(), [](const pairtype& p1, const pairtype& p2) { return p1.second < p2.second; });
+    return std::make_pair(min.second, max.second);
+  }
+
+  /*--------------------------------------------------------------------*/
+  bool checkAnswerOK(std::string& answer, bool& result)
+  /*--------------------------------------------------------------------*/
+  {
+    std::transform(answer.begin(), answer.end(), answer.begin(), [](unsigned char x) { return ::tolower(x); });
+
+    bool answer_valid = (answer == "y") || (answer == "n") || (answer == "yes") || (answer == "no") ||
+                        (answer == "true") || (answer == "false") || (answer == "1") || (answer == "0");
+
+    result = answer_valid && (answer[0] == 'y' || answer[0] == 't' || answer[0] == '1');
+    return answer_valid;
+  }
 };  // namespace SiPixelPI
 #endif
